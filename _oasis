@@ -1,0 +1,49 @@
+OASISFormat:  0.3
+Name:         yadns
+Version:      0.1
+License:      BSD3
+Authors:      ygrek
+Copyrights:   (C) 2009 ygrek
+#Homepage:    http://yadns.forge.ocamlcore.org/
+BuildTools:   ocamlbuild, camlp4
+Plugins:      DevFiles (0.3), META (0.3)
+
+Synopsis: Yet another DNS library
+Description:
+  Provides DNS format parsing and constructing functions, partial.
+
+Library yadns
+  Path: src/
+  Modules: Dns_format
+  BuildDepends: bitstring, extlib
+
+Executable dns_client
+  Path: src/
+  Install: false
+  CompiledObject: best
+  MainIs: dns_client.ml
+  BuildDepends: yadns
+
+Executable test
+  Path: test/
+  Install: false
+  Build$: flag(tests)
+  Custom: true
+  CompiledObject: best
+  MainIs: test.ml
+  BuildDepends: yadns, oUnit (>= 1.0.3)
+
+Test main
+  Command: $test
+  TestTools: test
+
+Document api
+  Title: API reference for yadns
+  Type: ocamlbuild (0.3)
+  Authors: ygrek
+  BuildTools: ocamldoc
+  Format: HTML
+  Index: index.html
+  XOCamlbuildPath:      src/
+  XOCamlbuildLibraries: yadns
+  XOCamlbuildModules: Dns_format

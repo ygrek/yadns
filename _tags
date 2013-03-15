@@ -1,0 +1,36 @@
+# OASIS_START
+# DO NOT EDIT (digest: ef30fe4046573439c1a00d00dcb26f08)
+# Ignore VCS directories, you can use the same kind of rule outside 
+# OASIS_START/STOP if you want to exclude directories that contains 
+# useless stuff for the build process
+<**/.svn>: -traverse
+<**/.svn>: not_hygienic
+".bzr": -traverse
+".bzr": not_hygienic
+".hg": -traverse
+".hg": not_hygienic
+".git": -traverse
+".git": not_hygienic
+"_darcs": -traverse
+"_darcs": not_hygienic
+# Library yadns
+"src/yadns.cmxs": use_yadns
+# Executable dns_client
+<src/dns_client.{native,byte}>: use_yadns
+<src/dns_client.{native,byte}>: pkg_bitstring
+<src/dns_client.{native,byte}>: pkg_extlib
+<src/*.ml{,i}>: use_yadns
+<src/*.ml{,i}>: pkg_bitstring
+<src/*.ml{,i}>: pkg_extlib
+# Executable test
+<test/test.{native,byte}>: use_yadns
+<test/test.{native,byte}>: pkg_oUnit
+<test/test.{native,byte}>: pkg_bitstring
+<test/test.{native,byte}>: pkg_extlib
+<test/*.ml{,i}>: use_yadns
+<test/*.ml{,i}>: pkg_oUnit
+<test/*.ml{,i}>: pkg_bitstring
+<test/*.ml{,i}>: pkg_extlib
+<test/test.{native,byte}>: custom
+# OASIS_STOP
+"src/dns_format.ml": syntax_camlp4o, pkg_bitstring.syntax

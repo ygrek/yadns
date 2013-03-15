@@ -1,0 +1,12 @@
+# OASIS_START
+# DO NOT EDIT (digest: 86fd9589acf1aebed19ab4356dc946c5)
+version = "0.1"
+description = "Yet another DNS library"
+requires = "bitstring extlib"
+archive(byte) = "yadns.cma"
+archive(byte, plugin) = "yadns.cma"
+archive(native) = "yadns.cmxa"
+archive(native, plugin) = "yadns.cmxs"
+exists_if = "yadns.cma"
+# OASIS_STOP
+
