@@ -84,7 +84,7 @@ let nxdomain fmt = err NXDOMAIN fmt
 
 (** 3.2.2. TYPE values *)
 
-type qtype = A | NS | CNAME | SOA | MX | TXT | AAAA | A6 | PTR
+type qtype = A | NS | CNAME | SOA | MX | TXT | AAAA | A6 | PTR | SRV
 let int_of_qtype = function
   | A -> 1
   | NS -> 2
@@ -94,6 +94,7 @@ let int_of_qtype = function
   | MX -> 15
   | TXT -> 16
   | AAAA -> 28 (* RFC 1886 *)
+  | SRV -> 33  (* RFC 2782 *)
   | A6 -> 38 (* RFC 2874 *)
 let qtype_of_int = function
   | 1 -> A
@@ -104,6 +105,7 @@ let qtype_of_int = function
   | 15 -> MX
   | 16 -> TXT
   | 28 -> AAAA
+  | 33 -> SRV
   | 38 -> A6
   | x -> notimpl "TYPE %u" x
 let string_of_qtype = function
@@ -115,6 +117,7 @@ let string_of_qtype = function
   | MX -> "MX"
   | TXT -> "TXT"
   | AAAA -> "AAAA"
+  | SRV -> "SRV"
   | A6 -> "A6"
 
 let int_of_rcode = function
@@ -171,7 +174,12 @@ let just_get_question str = get_question (ref str)
 (* 4.1.3. Resource record format *)
 
 type domain = string list
-type rr_record = RR_None | RR_A of domain * int32 * ipv4 | RR_CNAME of domain * domain | RR_Unknown of int
+type rr_record =
+  | RR_None
+  | RR_A of domain * int32 * ipv4
+  | RR_CNAME of domain * domain
+  | RR_SRV of domain * int32 * int * int * int * int * domain
+  | RR_Unknown of int
 
 (* parse answer (incomplete) *)
 let get_answer refstr =
@@ -185,6 +193,12 @@ let get_answer refstr =
         | Some (tail,cname) when bitstring_length tail = 0 -> RR_CNAME (domain, cname)
         | _ -> RR_None
         end
+     | { 33 (* SRV *) : 16; 1: 16; ttl : 32 : unsigned; n:16; prio : 16; wght : 16; port : 16; :rest } ->
+       begin match domain_name rest with
+         | Some (tail, target) ->
+           RR_SRV (domain, ttl, n, prio, wght, port, target)
+         | _ -> assert false
+       end
      (* unknown record *)
      | { typ : 16; cls : 16; ttl : 32 : unsigned; n : 16; _rdata : bits n : bitstring; :rest } -> refstr := rest; RR_Unknown typ
      | { } -> RR_None
@@ -242,6 +256,8 @@ let pkt_out out (pkt:pkt) =
               (string_of_domain dom) (string_of_ipv4 addr) (Int32.to_int ttl)
         | RR_CNAME (dom,cname) ->
             IO.printf out "Answer: CNAME %s %s\n" (string_of_domain dom) (string_of_domain cname)
+        | RR_SRV (domain, ttl, n, prio, weight, port, target) ->
+          IO.printf out "Answer: SRV %s %d %d %d %d %s\n" (string_of_domain domain) n prio weight port (string_of_domain target)
         | RR_Unknown n ->
             IO.printf out "Answer: Unknown (%d)\n" n
       done
