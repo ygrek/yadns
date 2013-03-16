@@ -190,7 +190,7 @@ type rr_record =
   | RR_None
   | RR_A of domain * int32 * ipv4
   | RR_CNAME of domain * domain
-  | RR_SRV of domain * int32 * int * int * int * int * domain
+  | RR_SRV of domain * int32 * int * int * domain * int (** domain, ttl, priority, weight, service host and port *)
   | RR_Unknown of int
 
 (* parse answer (incomplete) *)
@@ -207,9 +207,9 @@ let get_answer refstr =
         end
      | { 33 (* SRV *) : 16; 1: 16; ttl : 32 : unsigned; n:16; prio : 16; wght : 16; port : 16; :rest } ->
        begin match domain_name rest with
-         | Some (tail, target) ->
-           RR_SRV (domain, ttl, n, prio, wght, port, target)
-         | _ -> assert false
+       | Some (tail, target) -> refstr := tail;
+         RR_SRV (domain, ttl, prio, wght, target, port)
+       | _ -> assert false
        end
      (* unknown record *)
      | { typ : 16; cls : 16; ttl : 32 : unsigned; n : 16; _rdata : bits n : bitstring; :rest } -> refstr := rest; RR_Unknown typ
@@ -268,8 +268,9 @@ let pkt_out out (pkt:pkt) =
               (string_of_domain dom) (string_of_ipv4 addr) (Int32.to_int ttl)
         | RR_CNAME (dom,cname) ->
             IO.printf out "Answer: CNAME %s %s\n" (string_of_domain dom) (string_of_domain cname)
-        | RR_SRV (domain, ttl, n, prio, weight, port, target) ->
-          IO.printf out "Answer: SRV %s %d %d %d %d %s\n" (string_of_domain domain) n prio weight port (string_of_domain target)
+        | RR_SRV (domain, ttl, prio, weight, target, port) ->
+          IO.printf out "Answer: SRV %s prio %d weight %d target %s:%d\n"
+            (string_of_domain domain) prio weight (string_of_domain target) port
         | RR_Unknown n ->
             IO.printf out "Answer: Unknown (%d)\n" n
       done
@@ -300,6 +301,7 @@ let pkt_info (pkt:pkt) =
         | RR_None -> "?"
         | RR_A (_domain,_ttl,addr) -> "A " ^ string_of_ipv4 addr
         | RR_CNAME (_domain,cname) -> "CNAME " ^ string_of_domain cname
+        | RR_SRV (_domain,_ttl,_prio,_weight,target,port) -> sprintf " SRV %s:%d" (string_of_domain target) port
         | RR_Unknown n -> sprintf "? (%d)" n
         ) 
       in
@@ -320,7 +322,7 @@ let parse s =
         (function
         | RR_None | RR_Unknown _ -> None
         | RR_A (_domain,_ttl,addr) -> Some addr
-        | RR_CNAME (_domain,_cname) -> None)
+        | RR_CNAME _  | RR_SRV _ -> None)
       in
       let info = match qr with
       | false -> `Query rd
