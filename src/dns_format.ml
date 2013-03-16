@@ -119,6 +119,18 @@ let string_of_qtype = function
   | AAAA -> "AAAA"
   | SRV -> "SRV"
   | A6 -> "A6"
+let qtype_of_string = function
+  | "A" -> A
+  | "NS" -> NS
+  | "CNAME" -> CNAME
+  | "SOA" -> SOA
+  | "PTR" -> PTR
+  | "MX" -> MX
+  | "TXT" -> TXT
+  | "AAAA" -> AAAA
+  | "SRV" -> SRV
+  | "A6" -> A6
+  | s -> fail "unknown qtype %S" s
 
 let int_of_rcode = function
   | OK       -> 0
@@ -450,13 +462,13 @@ let make_reply_s query answer =
 (** DNS ID is 16-bit *)
 let max_id = 0xffff
 
-(* build A IN query packet *)
-let query_pkt_a id name =
+(* make query packet *)
+let make_query_pkt id qtype name =
   let qr = false and aa = false and tc = false and rd = true and ra = false in
   let rcode = 0 in
   let id = id land max_id in
   let domain = labels_of_domain name in
-  let qtype = 1 (* A *) and qclass = class_in and opc = opcode_query in
+  let qtype = int_of_qtype qtype and qclass = class_in and opc = opcode_query in
   BITSTRING {
     id : 16;
     qr : 1; opc : 4; aa : 1; tc : 1; rd : 1; ra : 1; 0 : 3; rcode : 4;
@@ -469,5 +481,4 @@ let query_pkt_a id name =
     qclass : 16
   }
 
-let make_query_a id domain = of_pkt & query_pkt_a id & domain_of_string domain
-
+let make_query id qtype domain = of_pkt & make_query_pkt id qtype & domain_of_string domain
