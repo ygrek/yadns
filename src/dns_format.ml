@@ -215,34 +215,7 @@ let get_answer refstr =
      | { typ : 16; cls : 16; ttl : 32 : unsigned; n : 16; _rdata : bits n : bitstring; :rest } -> refstr := rest; RR_Unknown typ
      | { } -> RR_None
 
-let hour = 3600l
-let hours = Int32.mul hour
-let day = hours 24l
-let days = Int32.mul day
-let default_ttl = hours 2l
-
-let make_rr domain rtype ?(ttl=default_ttl) rdata =
-  let name = labels_of_domain domain in
-  let len = bitstring_length rdata in
-  assert (0 = len mod 8);
-  let len = len / 8 in
-  BITSTRING {
-    name : string_bits name : string;
-    int_of_qtype rtype : 16;
-    class_in : 16;
-    ttl : 32 : unsigned;
-    len : 16 : unsigned;
-    rdata : 8 * len : bitstring
-  }
-
-let make_rr_a domain ?(ttl=default_ttl) addr =
-  make_rr domain A ~ttl (BITSTRING { addr : 4*8 : unsigned })
-
-let make_rr_txt domain ?ttl txt =
-  assert (String.length txt < 256);
-  make_rr domain TXT ?ttl (BITSTRING { String.length txt : 8; txt : string_bits txt : string })
-
-let pkt_out out (pkt:pkt) =
+let output_pkt out (pkt:pkt) =
   bitmatch pkt with
   | { :dns_header; :rest } ->
       IO.printf out "DNS: id %u\n" id;
@@ -276,12 +249,13 @@ let pkt_out out (pkt:pkt) =
       done
   | { } -> IO.printf out "<?>\n"
 
-let pkt_out_s pkt = 
+let show_pkt pkt = 
   let out = IO.output_string () in
-  pkt_out out pkt;
+  output_pkt out pkt;
   IO.close_out out
 
-let pkt_info (pkt:pkt) =
+(** one line pkt summary *)
+let show_pkt_summary (pkt:pkt) =
   let out = IO.output_string () in
   (bitmatch pkt with
   | { :dns_header; :rest } ->
@@ -301,7 +275,7 @@ let pkt_info (pkt:pkt) =
         | RR_None -> "?"
         | RR_A (_domain,_ttl,addr) -> "A " ^ string_of_ipv4 addr
         | RR_CNAME (_domain,cname) -> "CNAME " ^ string_of_domain cname
-        | RR_SRV (_domain,_ttl,_prio,_weight,target,port) -> sprintf " SRV %s:%d" (string_of_domain target) port
+        | RR_SRV (_domain,_ttl,_prio,_weight,target,port) -> sprintf "SRV %s:%d" (string_of_domain target) port
         | RR_Unknown n -> sprintf "? (%d)" n
         ) 
       in
@@ -309,8 +283,8 @@ let pkt_info (pkt:pkt) =
   | { } -> IO.printf out "no dns header");
   IO.close_out out
 
-(** parse DNS packet (only IN QUERY A and CNAME for now), extract question and answer sections *)
-let parse s =
+(** parse DNS packet and extract question and answer (only A) sections *)
+let parse_extract_a s =
   bitmatch (to_pkt s) with
   | { :dns_header; :rest } ->
       if opc <> opcode_query then fail "Expected QUERY, got %s" (describe_opcode opc);
@@ -331,28 +305,37 @@ let parse s =
       id, info, qd, an
   | { } -> fail "no dns header"
 
-(* --- From bitstring 2.0.0 *)
+let get_dns_header pkt =
+  bitmatch pkt with
+  | { :dns_header; :rest } -> id, qr, opc, rest
+  | { } -> failwith "no dns header"
 
-(* Concatenate bitstrings. *)
-let concat_bs bs =
-  let buf = Buffer.create () in
-  List.iter (construct_bitstring buf) bs;
-  Buffer.contents buf
+let hour = 3600l
+let hours = Int32.mul hour
+let day = hours 24l
+let days = Int32.mul day
+let default_ttl = hours 2l
 
-(* --- *)
-
-let make_reply_packet rcode id opc rr_qd (rr_an,rr_ns,rr_ar) =
-  let qr = true and aa = true and tc = false and rd = false and ra = false in
-  let hdr = BITSTRING 
-  {
-    id : 16;
-    qr : 1; opc : 4; aa : 1; tc : 1; rd : 1; ra : 1; 0 : 3; int_of_rcode rcode : 4;
-    List.length rr_qd : 16;
-    List.length rr_an : 16;
-    List.length rr_ns : 16;
-    List.length rr_ar : 16
+let make_rr domain rtype ?(ttl=default_ttl) rdata =
+  let name = labels_of_domain domain in
+  let len = bitstring_length rdata in
+  assert (0 = len mod 8);
+  let len = len / 8 in
+  BITSTRING {
+    name : string_bits name : string;
+    int_of_qtype rtype : 16;
+    class_in : 16;
+    ttl : 32 : unsigned;
+    len : 16 : unsigned;
+    rdata : 8 * len : bitstring
   }
-  in concat_bs (hdr :: List.flatten [rr_qd; rr_an; rr_ns; rr_ar])
+
+let make_rr_a domain ?(ttl=default_ttl) addr =
+  make_rr domain A ~ttl (BITSTRING { addr : 4*8 : unsigned })
+
+let make_rr_txt domain ?ttl txt =
+  assert (String.length txt < 256);
+  make_rr domain TXT ?ttl (BITSTRING { String.length txt : 8; txt : string_bits txt : string })
 
 let make_soa_rdata d =
   let mname = d.ns >> List.hd >> domain_of_string >> labels_of_domain in
@@ -381,85 +364,32 @@ let make_rr_ns domain name =
 let make_rr_soa d =
   make_rr (domain_of_string d.name) SOA (make_soa_rdata d)
 
-(* FIXME global vars *)
-
-(* replies with REFUSED *)
-let cnt_refused = ref 0
-(* not QUERY opcodes *)
-let cnt_opcode = ref 0
-(* bad packets *)
-let cnt_error = ref 0
-
-(*
-module CC = Cache.Count
-let cnt_qtype = CC.create ()
-let qtypes () = CC.show cnt_qtype string_of_qtype
-*)
-
-let answer_query resolve qtype domain =
-  match resolve domain with
-  | None -> 
-    incr cnt_refused;
-    refused "couldn't resolve %s" (string_of_domain domain)
-  | Some d ->
-(*     CC.add cnt_qtype qtype; *)
-    match qtype with
-    | CNAME | SOA -> [make_rr_soa d],[],[]
-    | NS -> 
-      if domain_equal domain (domain_of_string d.name) then
-        List.map (make_rr_ns domain) d.ns (* check for empty? *) , [], []
-      else (* subdomain *)
-        [],[make_rr_soa d],[]
-      (*List.map (fun (name,ip) -> make_rr_a name ip) nameservers*)
-    | A -> [make_rr_a domain d.ip],[],[]
-    | _ -> notimpl "QTYPE %s" (string_of_qtype qtype)
-
 let describe_exn exn =
   let (rcode,reason) = match exn with Error (rc,s) -> rc,s | exn -> SERVFAIL, Printexc.to_string exn in
   rcode, sprintf "%s : %s" (string_of_rcode rcode) reason
 
-let make_reply_exn (query:pkt) answer ~on_error k =
-  bitmatch query with
-  | { :dns_header; :rest } -> 
-    begin
-    match qr with
-    | true -> failwith "response bit set"
-    | false ->
-      let question = ref [] in
-      try
-        match opc with
-        | 0 -> (* QUERY *)
-           let (qtype,domain,qn) = just_get_question rest in
-           question := [qn];
-           let f reply = k & make_reply_packet OK id opc !question reply in
-           answer qtype domain f
-        | n -> incr cnt_opcode; notimpl "opcode %d" n
-      with
-      | exn ->
-        let rcode = on_error exn in
-        k & make_reply_packet rcode id opc !question ([],[],[])
-    end
-  | { } -> failwith "no dns header"
+(* --- From bitstring 2.0.0 *)
 
-(*
-let make_reply (query:pkt) answer =
-  try
-    make_reply_exn query answer (fun x -> Some x)
-  with
-  | exn -> 
-    incr cnt_error; 
-    log #error "DNS error: %s" (Exn.str exn); 
-    None
+(* Concatenate bitstrings. *)
+let concat_bs bs =
+  let buf = Buffer.create () in
+  List.iter (construct_bitstring buf) bs;
+  Buffer.contents buf
 
-let make_reply_s query answer =
-  try
-    make_reply_exn (to_pkt query) answer (fun p -> Some (of_pkt p))
-  with
-  | exn -> 
-    incr cnt_error; 
-    log #error "DNS error: %s" (Exn.str exn); 
-    None
-*)
+(* --- *)
+
+let make_reply_packet rcode id opc rr_qd (rr_an,rr_ns,rr_ar) =
+  let qr = true and aa = true and tc = false and rd = false and ra = false in
+  let hdr = BITSTRING 
+  {
+    id : 16;
+    qr : 1; opc : 4; aa : 1; tc : 1; rd : 1; ra : 1; 0 : 3; int_of_rcode rcode : 4;
+    List.length rr_qd : 16;
+    List.length rr_an : 16;
+    List.length rr_ns : 16;
+    List.length rr_ar : 16
+  }
+  in concat_bs (hdr :: List.flatten [rr_qd; rr_an; rr_ns; rr_ar])
 
 (** DNS ID is 16-bit *)
 let max_id = 0xffff
@@ -483,4 +413,4 @@ let make_query_pkt id qtype name =
     qclass : 16
   }
 
-let make_query id qtype domain = of_pkt & make_query_pkt id qtype & domain_of_string domain
+let make_query_packet id qtype domain = of_pkt & make_query_pkt id qtype & domain_of_string domain

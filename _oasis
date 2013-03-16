@@ -14,7 +14,7 @@ Description:
 
 Library yadns
   Path: src/
-  Modules: Dns_format
+  Modules: Dns_format, Dns_utils, Dns_logic
   BuildDepends: bitstring, extlib
 
 Executable dns_client

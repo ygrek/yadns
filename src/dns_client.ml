@@ -25,8 +25,8 @@ let start = Unix.gettimeofday ()
 let buffer = String.create maxlen
 
 let ask sockaddr typ domain =
-    let pkt = Dns.make_query (Random.int Dns.max_id + 1) typ domain in
-    ignore (sendto sock pkt 0 (String.length pkt) [] sockaddr);
+    let packet = Dns.make_query_packet (Random.int Dns.max_id + 1) typ domain in
+    ignore (sendto sock packet 0 (String.length packet) [] sockaddr);
 (*    Sys.set_signal Sys.sigalrm (Sys.Signal_handle handle_alarm);
     ignore (alarm timeout);*)
     let msg =
@@ -34,8 +34,7 @@ let ask sockaddr typ domain =
       | len, ADDR_INET (_,_) -> String.sub buffer 0 len
       | _ -> assert false 
     in
-    Dns.pkt_out (IO.output_channel Pervasives.stdout) (Dns.to_pkt msg);
-    print_endline ""
+    print_endline (Dns.show_pkt & Dns.to_pkt msg)
 (*    ignore (alarm 0);*)
 (*
     Printf.printf "Server %s responded\n" hishost;
