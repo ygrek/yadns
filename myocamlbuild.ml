@@ -488,4 +488,8 @@ let dispatch_default = MyOCamlbuildBase.dispatch_default package_default;;
 
 # 490 "myocamlbuild.ml"
 (* OASIS_STOP *)
+
+pflag ["ocaml";"compile";] "warn" (fun s -> S [A "-w"; A s])
+;;
+
 Ocamlbuild_plugin.dispatch dispatch_default;;

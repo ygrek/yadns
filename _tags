@@ -33,4 +33,5 @@
 <test/*.ml{,i}>: pkg_extlib
 <test/test.{native,byte}>: custom
 # OASIS_STOP
-"src/dns_format.ml": syntax_camlp4o, pkg_bitstring.syntax
+"src/dns_format.ml": syntax_camlp4o, pkg_bitstring.syntax, warn(-27)
+true: debug, annot, warn(+A-4)
